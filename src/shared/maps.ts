@@ -8,6 +8,16 @@ export interface BoxDef {
   color: string;
 }
 
+export interface PadDef {
+  x: number; y: number; z: number; // pad surface position (y = floor height)
+  boost: number;                   // vertical launch velocity
+}
+
+export interface PickupDef {
+  x: number; y: number; z: number;
+  kind: "health" | "shield";
+}
+
 export interface MapDef {
   id: string;
   name: string;
@@ -17,6 +27,8 @@ export interface MapDef {
   ground: string;
   groundAccent: string;
   boxes: BoxDef[];
+  pads: PadDef[];
+  pickups: PickupDef[];
   /** [x, z, yawDegrees] per team, cycled through for spawns. */
   spawns: [[number, number, number][], [number, number, number][]];
 }
@@ -44,11 +56,16 @@ function walls(size: number, h: number, color: string): BoxDef[] {
   ];
 }
 
-// ── FOUNDRY: industrial arena. Crates, catwalk block, container lanes. ──
+// ── FOUNDRY: industrial arena. Twin towers + high bridge over a launch
+// pad, crates, container lanes. ──
 const foundryHalf: BoxDef[] = [
-  // Mid structure (shared, on axis)
-  box(0, 1.5, 0, 10, 3, 3, "#5a6472"),          // central wall block
-  box(0, 3.6, 0, 6, 1.2, 5, "#6b7684"),          // roof slab over mid (jump-up perch)
+  // Mid structure (shared, on axis): two towers with a catwalk bridge high
+  // above them. The gap between the towers holds the launch pad; the bridge
+  // has a slot at center so the pad throws you up through it.
+  box(-5, 2.75, 0, 4, 5.5, 3, "#5a6472"),        // west tower
+  box(5, 2.75, 0, 4, 5.5, 3, "#5a6472"),         // east tower
+  box(-4, 5.75, 0, 6, 0.5, 2.6, "#6b7684"),      // bridge deck (west half)
+  box(4, 5.75, 0, 6, 0.5, 2.6, "#6b7684"),       // bridge deck (east half)
   box(-8, 1, 0, 2.2, 2, 2.2, "#8a4a3a"),         // flank crates at mid line
   box(8, 1, 0, 2.2, 2, 2.2, "#8a4a3a"),
 
@@ -73,7 +90,7 @@ const FOUNDRY: MapDef = {
   ground: "#39404c",
   groundAccent: "#2e3540",
   boxes: [
-    ...walls(24, 5, "#2c333e"),
+    ...walls(24, 8, "#2c333e"),
     ...mirrorZ(foundryHalf),
     // Stairs up onto each container, mirrored by hand (rise along z toward the container)
     ...mirrorZ([
@@ -85,6 +102,14 @@ const FOUNDRY: MapDef = {
       box(13, 1.25, 11.2, 2.4, 2.5, 0.7, "#505a6a"),
     ]),
   ],
+  pads: [{ x: 0, y: 0, z: 0, boost: 16.5 }],
+  pickups: [
+    { x: 0, y: 6.0, z: 0, kind: "shield" },   // grabbed mid-flight through the bridge slot
+    { x: 0, y: 0, z: 13, kind: "health" },
+    { x: 0, y: 0, z: -13, kind: "health" },
+    { x: -13, y: 3.4, z: 8, kind: "health" },  // on the container lids
+    { x: 13, y: 3.4, z: -8, kind: "health" },
+  ],
   spawns: [
     [[-8, -20, 180], [0, -21, 180], [8, -20, 180], [-3, -19, 180], [3, -19, 180]],
     [[8, 20, 0], [0, 21, 0], [-8, 20, 0], [3, 19, 0], [-3, 19, 0]],
@@ -93,12 +118,18 @@ const FOUNDRY: MapDef = {
 
 // ── MESA: open desert arena. Rocks, pillars, raised center. ──
 const mesaHalf: BoxDef[] = [
-  box(0, 0.9, 0, 12, 1.8, 8, "#7a5a44"),          // raised mesa center (walkable via ramps)
-  box(0, 2.4, 0, 3.5, 1.2, 3.5, "#8a6a50"),       // block on top of mesa
-  box(-15, 2, 4, 3, 4, 3, "#6e5240"),             // tall rock left
-  box(15, 2, 4, 3, 4, 3, "#6e5240"),              // tall rock right
+  box(0, 0.9, 0, 12, 1.8, 8, "#7a5a44"),          // raised mesa center (walkable via steps)
+  // Floating spire deck high above the mesa; the launch pad on the mesa top
+  // throws you up through the slot between the two halves.
+  box(-1.9, 6.0, 0, 1.8, 0.5, 5, "#8a6a50"),
+  box(1.9, 6.0, 0, 1.8, 0.5, 5, "#8a6a50"),
+  box(-15, 2.75, 4, 3, 5.5, 3, "#6e5240"),        // tall rock left
+  box(15, 2.75, 4, 3, 5.5, 3, "#6e5240"),         // tall rock right
 
-  box(0, 0.45, 7.2, 12, 0.9, 1.6, "#77573f"),     // mesa step (front, lets you climb up)
+  // Mesa staircase (each rise ≤ 0.5 so it's walkable)
+  box(0, 0.25, 7.8, 12, 0.5, 1.2, "#77573f"),
+  box(0, 0.5, 6.9, 12, 1.0, 1.0, "#755538"),
+  box(0, 0.75, 6.1, 12, 1.5, 0.9, "#725236"),
   box(-8, 1.1, 10, 2.6, 2.2, 2.6, "#7d5c46"),     // mid rocks
   box(8, 1.1, 10, 2.6, 2.2, 2.6, "#7d5c46"),
   box(-2.5, 0.8, 14, 2, 1.6, 2, "#86644c"),
@@ -117,7 +148,15 @@ const MESA: MapDef = {
   fog: "#b8916a",
   ground: "#a3764f",
   groundAccent: "#8f6743",
-  boxes: [...walls(26, 5, "#5c4534"), ...mirrorZ(mesaHalf)],
+  boxes: [...walls(26, 8, "#5c4534"), ...mirrorZ(mesaHalf)],
+  pads: [{ x: 0, y: 1.8, z: 0, boost: 14.5 }],
+  pickups: [
+    { x: 0, y: 6.25, z: 0, kind: "shield" },
+    { x: 0, y: 0, z: 14, kind: "health" },
+    { x: 0, y: 0, z: -14, kind: "health" },
+    { x: -16, y: 0, z: 0, kind: "health" },
+    { x: 16, y: 0, z: 0, kind: "health" },
+  ],
   spawns: [
     [[-9, -22, 180], [0, -23, 180], [9, -22, 180], [-4, -21, 180], [4, -21, 180]],
     [[9, 22, 0], [0, 23, 0], [-9, 22, 0], [4, 21, 0], [-4, 21, 0]],

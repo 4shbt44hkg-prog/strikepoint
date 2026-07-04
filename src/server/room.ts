@@ -6,12 +6,13 @@
 import type { WebSocket } from "ws";
 import type { C2S, S2C } from "../shared/protocol";
 import {
-  EYE_HEIGHT, LOADOUT_TIME, MATCHEND_TIME, MAX_HP, MAX_PLAYERS, ROUNDEND_TIME,
-  ROUNDS_TO_WIN, ROUND_TIME, SPRINT_MULT, WALK_SPEED,
+  ARMOR_ABSORB, EYE_HEIGHT, HEALTH_PICKUP, HEALTH_RESPAWN, LOADOUT_TIME,
+  MATCHEND_TIME, MAX_ARMOR, MAX_HP, MAX_PLAYERS, PICKUP_RADIUS, ROUNDEND_TIME,
+  ROUNDS_TO_WIN, ROUND_TIME, SHIELD_PICKUP, SHIELD_RESPAWN, SPRINT_MULT, WALK_SPEED,
   type HitPart, type Phase, type PlayerMeta, type PlayerSnap, type Team,
 } from "../shared/types";
 import { WEAPONS, PRIMARIES, SECONDARIES, damageAt, fireInterval } from "../shared/weapons";
-import { MAPS, MAP_ROTATION, type MapDef } from "../shared/maps";
+import { MAPS, MAP_ROTATION, type MapDef, type PickupDef } from "../shared/maps";
 import { collideMove, groundHeight, hasLOS, mapAABBs, type AABB } from "../shared/collide";
 
 const BOT_NAMES = ["Rex", "Ivy", "Juno", "Blitz", "Nova", "Tank", "Echo", "Zip"];
@@ -26,6 +27,7 @@ interface SPlayer {
   yaw: number;
   pitch: number;
   hp: number;
+  armor: number;
   alive: boolean;
   wpn: string;
   moving: boolean;
@@ -44,6 +46,13 @@ interface SPlayer {
   botAcc: number;       // base accuracy 0..1
 }
 
+interface SPickup {
+  id: number;
+  def: PickupDef;
+  active: boolean;
+  timer: number; // seconds until respawn while inactive
+}
+
 export class Room {
   code: string;
   private nextId = 1;
@@ -56,11 +65,17 @@ export class Room {
   private mapIdx = 0;
   private map: MapDef;
   private aabbs: AABB[];
+  private pickups: SPickup[] = [];
 
   constructor(code: string) {
     this.code = code;
     this.map = MAPS[MAP_ROTATION[0]];
     this.aabbs = mapAABBs(this.map);
+    this.buildPickups();
+  }
+
+  private buildPickups(): void {
+    this.pickups = this.map.pickups.map((def, i) => ({ id: i, def, active: true, timer: 0 }));
   }
 
   humanCount(): number {
@@ -100,7 +115,7 @@ export class Room {
     const p: SPlayer = {
       id: this.nextId++, ws: null, name, team, bot,
       pos: { x: 0, y: 0, z: team === 0 ? -this.map.size + 2 : this.map.size - 2 },
-      yaw: 0, pitch: 0, hp: MAX_HP,
+      yaw: 0, pitch: 0, hp: MAX_HP, armor: 0,
       alive: false, // deploys at next round start
       wpn: "raptor", moving: false, sprint: false,
       kills: 0, deaths: 0,
@@ -198,7 +213,10 @@ export class Room {
   }
 
   private applyDamage(from: SPlayer, target: SPlayer, dmg: number, part: HitPart, wpnId: string): void {
-    target.hp = Math.max(0, target.hp - dmg);
+    // UT-style shield: armor eats a fraction of incoming damage until it breaks.
+    const absorbed = Math.min(target.armor, Math.round(dmg * ARMOR_ABSORB));
+    target.armor -= absorbed;
+    target.hp = Math.max(0, target.hp - (dmg - absorbed));
     this.broadcast({ t: "dmg", target: target.id, from: from.id, hp: target.hp, amount: dmg, part });
     if (target.hp <= 0 && target.alive) {
       target.alive = false;
@@ -235,12 +253,14 @@ export class Room {
       p.yaw = (yawDeg * Math.PI) / 180;
       p.pitch = 0;
       p.hp = MAX_HP;
+      p.armor = 0;
       p.alive = true;
       p.fireBudget = 3;
       p.botCd = 0.5 + Math.random();
       p.botReload = 0;
       if (p.ws) this.send(p, { t: "spawn", pos: [x, 0, z], yaw: p.yaw });
     }
+    for (const pk of this.pickups) { pk.active = true; pk.timer = 0; }
     this.broadcast(this.phaseMsg());
     this.sendRoster();
   }
@@ -306,6 +326,7 @@ export class Room {
       this.mapIdx = (this.mapIdx + 1) % MAP_ROTATION.length;
       this.map = MAPS[MAP_ROTATION[this.mapIdx]];
       this.aabbs = mapAABBs(this.map);
+      this.buildPickups();
       this.score = [0, 0];
       this.round = 0;
       for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; }
@@ -314,9 +335,41 @@ export class Room {
 
     if (this.phase === "live") {
       for (const p of this.players.values()) if (p.bot && p.alive) this.tickBot(p, dt);
+      this.tickPickups(dt);
     }
 
     this.broadcastSnap();
+  }
+
+  // ── Pickups ─────────────────────────────────────────────────
+
+  private tickPickups(dt: number): void {
+    for (const pk of this.pickups) {
+      if (!pk.active) {
+        pk.timer -= dt;
+        if (pk.timer <= 0) pk.active = true;
+        continue;
+      }
+      for (const p of this.players.values()) {
+        if (!p.alive) continue;
+        const dx = p.pos.x - pk.def.x;
+        const dz = p.pos.z - pk.def.z;
+        if (dx * dx + dz * dz > PICKUP_RADIUS * PICKUP_RADIUS) continue;
+        if (Math.abs(p.pos.y - pk.def.y) > 1.7) continue;
+        if (pk.def.kind === "health") {
+          if (p.hp >= MAX_HP) continue; // full — leave it for someone who needs it
+          p.hp = Math.min(MAX_HP, p.hp + HEALTH_PICKUP);
+          pk.timer = HEALTH_RESPAWN;
+        } else {
+          if (p.armor >= MAX_ARMOR) continue;
+          p.armor = Math.min(MAX_ARMOR, p.armor + SHIELD_PICKUP);
+          pk.timer = SHIELD_RESPAWN;
+        }
+        pk.active = false;
+        this.broadcast({ t: "pickup", id: pk.id, by: p.id, kind: pk.def.kind });
+        break;
+      }
+    }
   }
 
   // ── Bot AI ──────────────────────────────────────────────────
@@ -437,9 +490,12 @@ export class Room {
       pos: [Math.round(p.pos.x * 100) / 100, Math.round(p.pos.y * 100) / 100, Math.round(p.pos.z * 100) / 100],
       yaw: Math.round(p.yaw * 1000) / 1000,
       pitch: Math.round(p.pitch * 1000) / 1000,
-      hp: p.hp, alive: p.alive, wpn: p.wpn, moving: p.moving, sprint: p.sprint,
+      hp: p.hp, armor: p.armor, alive: p.alive, wpn: p.wpn, moving: p.moving, sprint: p.sprint,
     }));
-    this.broadcast({ t: "snap", players, timer: Math.max(0, Math.round(this.timer)) });
+    this.broadcast({
+      t: "snap", players, timer: Math.max(0, Math.round(this.timer)),
+      pickups: this.pickups.filter((pk) => pk.active).map((pk) => pk.id),
+    });
   }
 
   private spawnPlayer(p: SPlayer): void {

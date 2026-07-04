@@ -5,6 +5,13 @@ export type Phase = "lobby" | "loadout" | "live" | "roundend" | "matchend";
 export type HitPart = "head" | "body";
 
 export const MAX_HP = 100;
+export const MAX_ARMOR = 100;
+export const ARMOR_ABSORB = 0.6;   // fraction of damage the shield eats
+export const HEALTH_PICKUP = 40;
+export const SHIELD_PICKUP = 75;
+export const HEALTH_RESPAWN = 20;  // seconds
+export const SHIELD_RESPAWN = 30;
+export const PICKUP_RADIUS = 1.25;
 export const ROUNDS_TO_WIN = 5;
 export const ROUND_TIME = 90; // seconds of live combat per round
 export const LOADOUT_TIME = 8; // seconds to pick weapons between rounds
@@ -33,6 +40,7 @@ export interface PlayerSnap {
   yaw: number;
   pitch: number;
   hp: number;
+  armor: number;
   alive: boolean;
   wpn: string;
   moving: boolean;

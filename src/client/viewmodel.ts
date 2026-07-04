@@ -1,6 +1,8 @@
 // First-person weapon models, built from boxes and attached to the camera.
+// Also renders loadout-card thumbnails from the same models.
 
 import * as THREE from "three";
+import { WEAPONS } from "../shared/weapons";
 
 const mat = (c: string, metal = 0.4) =>
   new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: metal });
@@ -94,6 +96,42 @@ function buildGun(id: string): { group: THREE.Group; muzzle: THREE.Vector3 } {
     }
   }
   return { group: g, muzzle: new THREE.Vector3(0, 0.01, muzzleZ) };
+}
+
+/** Render each weapon model to a small image (data URL) for the loadout cards. */
+export function generateWeaponThumbs(): Record<string, string> {
+  const out: Record<string, string> = {};
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  const W = 220, H = 110;
+  renderer.setSize(W, H, false);
+  renderer.setPixelRatio(1);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.AmbientLight("#ffffff", 1.5));
+  const key = new THREE.DirectionalLight("#fff8ec", 2.4);
+  key.position.set(1.4, 2, 1.2);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight("#9ecbff", 1.1);
+  rim.position.set(-1.5, 0.6, -1);
+  scene.add(rim);
+  const cam = new THREE.PerspectiveCamera(26, W / H, 0.01, 20);
+
+  for (const id of Object.keys(WEAPONS)) {
+    const { group } = buildGun(id);
+    const bb = new THREE.Box3().setFromObject(group);
+    const center = bb.getCenter(new THREE.Vector3());
+    const size = bb.getSize(new THREE.Vector3());
+    group.position.sub(center);
+    scene.add(group);
+    const r = Math.max(size.x, size.y, size.z);
+    cam.position.set(r * 1.05, r * 0.6, r * 1.35);
+    cam.lookAt(0, 0, 0);
+    renderer.render(scene, cam);
+    out[id] = canvas.toDataURL("image/png");
+    scene.remove(group);
+  }
+  renderer.dispose();
+  return out;
 }
 
 export class ViewModel {

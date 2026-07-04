@@ -18,7 +18,7 @@ import * as hud from "./hud";
 import { settings } from "./settings";
 import {
   playShot, playHit, playKill, playHurt, playDeath, playReload, playSwap,
-  playRoundStart, playRoundEnd,
+  playRoundStart, playRoundEnd, playPickup, playLaunch,
 } from "./sound";
 
 interface Remote {
@@ -55,8 +55,10 @@ export class Game {
   private yaw = 0;
   private pitch = 0;
   private hp = MAX_HP;
+  private armor = 0;
   private alive = false;
   private grounded = true;
+  private padCooldown = 0;
   private sprinting = false;
   private sprintBlock = 0;
 
@@ -157,10 +159,16 @@ export class Game {
       }
       case "snap": {
         this.timer = msg.timer;
+        const active = new Set(msg.pickups);
+        for (let i = 0; i < MAPS[this.mapId].pickups.length; i++) {
+          this.renderer.setPickupActive(i, active.has(i));
+        }
         for (const s of msg.players) {
           if (s.id === this.myId) {
             this.hp = s.hp;
+            this.armor = s.armor;
             hud.trackHp(this.hp);
+            hud.setArmor(this.armor);
             if (!s.alive && this.alive) this.alive = false;
             continue;
           }
@@ -227,7 +235,9 @@ export class Game {
         this.pitch = 0;
         this.alive = true;
         this.hp = MAX_HP;
+        this.armor = 0;
         hud.trackHp(this.hp);
+        hud.setArmor(0);
         hud.showSpectate(false);
         this.cur = "primary";
         this.slots = hud.getLoadout();
@@ -266,6 +276,11 @@ export class Game {
         } else if (msg.from === this.myId) {
           playKill();
         }
+        break;
+      }
+      case "pickup": {
+        this.renderer.setPickupActive(msg.id, false);
+        if (msg.by === this.myId) playPickup(msg.kind);
         break;
       }
       case "err":
@@ -333,6 +348,20 @@ export class Game {
         this.grounded = true;
       } else {
         this.grounded = false;
+      }
+      // Launch pads
+      this.padCooldown = Math.max(0, this.padCooldown - dt);
+      if (this.grounded && this.padCooldown <= 0 && this.phase === "live") {
+        for (const pad of MAPS[this.mapId].pads) {
+          const dx = this.pos.x - pad.x, dz = this.pos.z - pad.z;
+          if (dx * dx + dz * dz < 1.3 * 1.3 && Math.abs(this.pos.y - pad.y) < 0.6) {
+            this.vel.y = pad.boost;
+            this.grounded = false;
+            this.padCooldown = 0.5;
+            playLaunch();
+            this.renderer.impact(new THREE.Vector3(pad.x, pad.y + 0.3, pad.z), "#37e0ff");
+          }
+        }
       }
     }
 

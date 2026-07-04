@@ -2,8 +2,9 @@
 // scoreboard, banners, pause overlay.
 
 import { PRIMARIES, SECONDARIES, WEAPONS } from "../shared/weapons";
-import { MAX_HP, ROUNDS_TO_WIN, TEAM_NAMES, type PlayerMeta, type Team } from "../shared/types";
+import { MAX_ARMOR, MAX_HP, ROUNDS_TO_WIN, TEAM_NAMES, type PlayerMeta, type Team } from "../shared/types";
 import { settings, saveSettings } from "./settings";
+import { generateWeaponThumbs } from "./viewmodel";
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -45,6 +46,7 @@ function statBar(v: number, max: number): string {
 }
 
 function buildLoadoutCards(): void {
+  const thumbs = generateWeaponThumbs();
   const build = (containerId: string, defs: typeof PRIMARIES, getSel: () => string, setSel: (id: string) => void) => {
     const el = $(containerId);
     el.innerHTML = "";
@@ -53,7 +55,8 @@ function buildLoadoutCards(): void {
       card.className = "wpncard" + (getSel() === w.id ? " selected" : "");
       card.dataset.wpn = w.id;
       const dps = Math.round(w.dmg * w.pellets * ((w.rpm * (w.burst ?? 1)) / 60));
-      card.innerHTML = `<b>${w.name}</b><span>${w.desc}</span>` +
+      card.innerHTML = `<img src="${thumbs[w.id]}" alt="${w.name}" draggable="false" />` +
+        `<b>${w.name}</b><span>${w.desc}</span>` +
         `<div class="stats">DMG ${statBar(w.dmg * w.pellets, 90)} &nbsp;DPS ${dps} &nbsp;MAG ${w.mag}</div>`;
       card.addEventListener("click", () => {
         setSel(w.id);
@@ -106,6 +109,13 @@ function setHpVignetteOnly(): void {
 export function trackHp(hp: number): void {
   lastHp = hp;
   setHp(hp);
+}
+
+export function setArmor(armor: number): void {
+  $("armorfill").style.width = `${Math.max(0, (armor / MAX_ARMOR) * 100)}%`;
+  const t = $("armortext");
+  t.textContent = String(Math.max(0, Math.ceil(armor)));
+  t.classList.toggle("zero", armor <= 0);
 }
 
 export function setAmmo(mag: number, reloading: boolean, wpnId: string): void {

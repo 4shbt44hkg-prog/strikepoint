@@ -33,7 +33,8 @@ export type S2C =
       winner?: Team | -1; // round/match winner; -1 = draw
     }
   | { t: "spawn"; pos: [number, number, number]; yaw: number } // directed at one player
-  | { t: "snap"; players: PlayerSnap[]; timer: number }
+  | { t: "snap"; players: PlayerSnap[]; timer: number; pickups: number[] } // active pickup ids
+  | { t: "pickup"; id: number; by: number; kind: "health" | "shield" }
   | { t: "fireFx"; id: number; wpn: string; origin: [number, number, number]; dir: [number, number, number] }
   | { t: "dmg"; target: number; from: number; hp: number; amount: number; part: HitPart }
   | { t: "kill"; target: number; from: number; wpn: string };

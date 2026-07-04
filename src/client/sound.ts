@@ -137,3 +137,30 @@ export function playRoundEnd(won: boolean): void {
 export function playClick(): void {
   blip(1200, 0.02, 0.1, "square");
 }
+
+export function playPickup(kind: "health" | "shield"): void {
+  if (kind === "health") {
+    blip(660, 0.07, 0.25, "triangle");
+    blip(880, 0.1, 0.25, "triangle", 0.07);
+  } else {
+    blip(523, 0.09, 0.28, "triangle");
+    blip(659, 0.09, 0.28, "triangle", 0.07);
+    blip(988, 0.16, 0.3, "triangle", 0.14);
+  }
+}
+
+export function playLaunch(): void {
+  const c = ac();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(160, t);
+  osc.frequency.exponentialRampToValueAtTime(900, t + 0.28);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.3, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  osc.connect(g).connect(master);
+  osc.start(t);
+  osc.stop(t + 0.4);
+}

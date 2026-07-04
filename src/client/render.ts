@@ -2,8 +2,43 @@
 // muzzle flashes, and impact sparks. All art is generated in code.
 
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { MAPS } from "../shared/maps";
 import { EYE_HEIGHT, TEAM_COLORS, type Team } from "../shared/types";
+
+/** Subtle grayscale grain texture — breaks up flat material colors. */
+let noiseTex: THREE.CanvasTexture | null = null;
+function getNoiseTex(): THREE.CanvasTexture {
+  if (noiseTex) return noiseTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 218 + Math.random() * 37;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  noiseTex = new THREE.CanvasTexture(c);
+  noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping;
+  return noiseTex;
+}
+
+/** Vertical gradient texture for the sky dome. */
+function skyTexture(top: THREE.Color, horizon: THREE.Color): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 2;
+  c.height = 256;
+  const g = c.getContext("2d")!;
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, `#${top.getHexString()}`);
+  grad.addColorStop(0.62, `#${horizon.getHexString()}`);
+  grad.addColorStop(1, `#${horizon.clone().multiplyScalar(0.9).getHexString()}`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 2, 256);
+  return new THREE.CanvasTexture(c);
+}
 
 interface Avatar {
   group: THREE.Group;
@@ -56,12 +91,17 @@ export class Renderer {
   private tracers: Tracer[] = [];
   private sparks: Spark[] = [];
   private currentMap = "";
+  private pickupMeshes = new Map<number, { mesh: THREE.Group; baseY: number }>();
+  private padMeshes: THREE.Mesh[] = [];
+  private fxTime = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.05, 400);
     this.camera.rotation.order = "YXZ";
     this.scene.add(this.camera);
@@ -102,12 +142,33 @@ export class Renderer {
     this.currentMap = mapId;
     const map = MAPS[mapId];
     this.mapGroup.clear();
-    this.scene.fog = new THREE.Fog(map.fog, 40, 160);
+    this.pickupMeshes.clear();
+    this.padMeshes = [];
+    this.scene.fog = new THREE.Fog(map.fog, 45, 180);
     this.renderer.setClearColor(map.sky);
 
-    // Lights
-    const hemi = new THREE.HemisphereLight(map.sky, map.ground, 0.9);
+    // Sky dome (gradient, unaffected by fog)
+    const skyTop = new THREE.Color(map.sky).lerp(new THREE.Color("#ffffff"), 0.12);
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(260, 24, 12),
+      new THREE.MeshBasicMaterial({
+        map: skyTexture(skyTop, new THREE.Color(map.fog).lerp(new THREE.Color("#ffffff"), 0.08)),
+        side: THREE.BackSide, fog: false, depthWrite: false,
+      }),
+    );
+    this.mapGroup.add(dome);
+
+    // Lights: bright hemisphere so shadow-side faces stay readable under
+    // ACES tone mapping, sun with shadows, and a soft fill from the far side.
+    const hemi = new THREE.HemisphereLight(
+      new THREE.Color(map.sky).lerp(new THREE.Color("#ffffff"), 0.6),
+      new THREE.Color(map.ground).lerp(new THREE.Color("#ffffff"), 0.3),
+      1.6,
+    );
     this.mapGroup.add(hemi);
+    const fill = new THREE.DirectionalLight("#dfe8ff", 0.5);
+    fill.position.set(-25, 30, -30);
+    this.mapGroup.add(fill);
     const sun = new THREE.DirectionalLight("#fff4e0", 1.6);
     sun.position.set(30, 50, 20);
     sun.castShadow = true;
@@ -121,9 +182,12 @@ export class Renderer {
     this.mapGroup.add(sun);
 
     // Ground: main slab + accent grid tiles for a sense of speed
+    const groundTex = getNoiseTex().clone();
+    groundTex.needsUpdate = true;
+    groundTex.repeat.set(10, 10);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(map.size * 2 + 8, map.size * 2 + 8),
-      new THREE.MeshStandardMaterial({ color: map.ground, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: map.ground, roughness: 0.95, map: groundTex }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -140,16 +204,62 @@ export class Renderer {
       }
     }
 
-    // Boxes
+    // Boxes: rounded edges + grain so they read as objects, not voxels
+    const boxTex = getNoiseTex();
     for (const b of map.boxes) {
+      const bevel = Math.min(0.08, Math.min(b.w, b.h, b.d) * 0.18);
       const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(b.w, b.h, b.d),
-        new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.85 }),
+        new RoundedBoxGeometry(b.w, b.h, b.d, 2, bevel),
+        new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.82, map: boxTex }),
       );
       mesh.position.set(b.x, b.y, b.z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.mapGroup.add(mesh);
+    }
+
+    // Launch pads: glowing rings that pulse
+    for (const pad of map.pads) {
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.25, 1.45, 0.14, 28),
+        new THREE.MeshStandardMaterial({
+          color: "#1a3c44", emissive: "#37e0ff", emissiveIntensity: 1.2, roughness: 0.4,
+        }),
+      );
+      ring.position.set(pad.x, pad.y + 0.07, pad.z);
+      this.mapGroup.add(ring);
+      this.padMeshes.push(ring);
+    }
+
+    // Pickups
+    for (let i = 0; i < map.pickups.length; i++) {
+      const def = map.pickups[i];
+      const g = new THREE.Group();
+      if (def.kind === "health") {
+        const body = new THREE.Mesh(
+          new RoundedBoxGeometry(0.55, 0.55, 0.55, 2, 0.09),
+          new THREE.MeshStandardMaterial({ color: "#f2f5f7", roughness: 0.5 }),
+        );
+        const crossMat = new THREE.MeshStandardMaterial({
+          color: "#2ec96a", emissive: "#2ec96a", emissiveIntensity: 0.55, roughness: 0.5,
+        });
+        const barH = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.58), crossMat);
+        const barV = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.4, 0.58), crossMat);
+        g.add(body, barH, barV);
+      } else {
+        const shield = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.42),
+          new THREE.MeshStandardMaterial({
+            color: "#ffd24a", emissive: "#ffb62e", emissiveIntensity: 0.8,
+            roughness: 0.25, metalness: 0.6,
+          }),
+        );
+        g.add(shield);
+      }
+      const baseY = def.y + 0.75;
+      g.position.set(def.x, baseY, def.z);
+      this.mapGroup.add(g);
+      this.pickupMeshes.set(i, { mesh: g, baseY });
     }
 
     // Distant backdrop blocks outside the walls for a skyline feel
@@ -311,7 +421,21 @@ export class Renderer {
     this.impact(to, "#c8c8c8");
   }
 
+  setPickupActive(id: number, active: boolean): void {
+    const p = this.pickupMeshes.get(id);
+    if (p) p.mesh.visible = active;
+  }
+
   update(dt: number): void {
+    this.fxTime += dt;
+    for (const [, p] of this.pickupMeshes) {
+      p.mesh.rotation.y += dt * 1.8;
+      p.mesh.position.y = p.baseY + Math.sin(this.fxTime * 2.2) * 0.12;
+    }
+    for (const ring of this.padMeshes) {
+      const m = ring.material as THREE.MeshStandardMaterial;
+      m.emissiveIntensity = 0.9 + Math.sin(this.fxTime * 4) * 0.45;
+    }
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.life -= dt;

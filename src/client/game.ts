@@ -312,6 +312,9 @@ export class Game {
     input.lookX = 0;
     input.lookY = 0;
 
+    // Aim assist: magnetize the crosshair toward a visible enemy near it.
+    if (canAct && settings.aimAssist) this.applyAimAssist(def, dt);
+
     // Movement
     this.sprintBlock = Math.max(0, this.sprintBlock - dt);
     this.sprinting = canAct && input.sprint && input.moveZ > 0.1 && !this.zoomed && this.sprintBlock <= 0;
@@ -486,13 +489,53 @@ export class Game {
     this.renderer.render();
   }
 
+  /**
+   * If a visible living enemy is within a small cone of the crosshair, pull
+   * the camera toward their chest (Rivals-style auto aim). Touch gets a wider
+   * cone and a stronger pull since there's no mouse to fine-aim with.
+   */
+  private applyAimAssist(def: WeaponDef, dt: number): void {
+    const cone = isTouch ? 0.14 : 0.07; // radians (~8° / ~4°)
+    const pull = isTouch ? 10 : 6;
+    const ox = this.pos.x, oy = this.pos.y + EYE_HEIGHT, oz = this.pos.z;
+    const fwd = new THREE.Vector3();
+    this.renderer.camera.getWorldDirection(fwd);
+    const myTeam = this.myTeam();
+    let bestAngle = cone;
+    let bestDir: { x: number; y: number; z: number } | null = null;
+    for (const [id, r] of this.remotes) {
+      if (!r.alive || this.teamOf(id) === myTeam) continue;
+      const dx = r.disp.x - ox;
+      const dy = r.disp.y + 1.05 - oy; // chest height
+      const dz = r.disp.z - oz;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist < 1 || dist > def.range) continue;
+      const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+      const angle = Math.acos(Math.max(-1, Math.min(1, fwd.x * nx + fwd.y * ny + fwd.z * nz)));
+      if (angle >= bestAngle) continue;
+      const wall = raycastWorld(this.aabbs, ox, oy, oz, nx, ny, nz, dist);
+      if (wall < dist - 0.5) continue; // not visible
+      bestAngle = angle;
+      bestDir = { x: dx, y: dy, z: dz };
+    }
+    if (!bestDir) return;
+    const k = Math.min(1, pull * dt);
+    const desiredYaw = Math.atan2(-bestDir.x, -bestDir.z);
+    const desiredPitch = Math.atan2(bestDir.y, Math.hypot(bestDir.x, bestDir.z));
+    let dyaw = desiredYaw - this.yaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    this.yaw += dyaw * k;
+    this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch + (desiredPitch - this.pitch) * k));
+  }
+
   // ── Firing ─────────────────────────────────────────────────
 
   /** Is the crosshair ray on a visible living enemy within weapon range? */
   private crosshairOnEnemy(def: WeaponDef): boolean {
     const dir = new THREE.Vector3();
     this.renderer.camera.getWorldDirection(dir);
-    const hit = this.pickEnemy(dir.x, dir.y, dir.z, 1.35);
+    const hit = this.pickEnemy(dir.x, dir.y, dir.z, 1.6);
     return hit !== null && hit.dist <= def.range;
   }
 

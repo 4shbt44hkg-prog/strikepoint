@@ -30,12 +30,15 @@ export function initHud(callbacks: HudCallbacks): void {
   $("resumebtn").addEventListener("click", () => cbs.onResume());
 
   const af = $("set-autofire") as HTMLInputElement;
+  const aa = $("set-aimassist") as HTMLInputElement;
   const sens = $("set-sens") as HTMLInputElement;
   const vol = $("set-vol") as HTMLInputElement;
   af.checked = settings.autoFire;
+  aa.checked = settings.aimAssist;
   sens.value = String(settings.sens);
   vol.value = String(settings.volume);
   af.addEventListener("change", () => { settings.autoFire = af.checked; saveSettings(); });
+  aa.addEventListener("change", () => { settings.aimAssist = aa.checked; saveSettings(); });
   sens.addEventListener("input", () => { settings.sens = Number(sens.value); saveSettings(); });
   vol.addEventListener("input", () => { settings.volume = Number(vol.value); saveSettings(); });
 }

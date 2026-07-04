@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { MAPS } from "../shared/maps";
 import { mapAABBs, groundHeight, collideMove, raycastWorld, rayBox, raySphere, type AABB } from "../shared/collide";
 import {
-  EYE_HEIGHT, GRAVITY, JUMP_VEL, MAX_HP, SPRINT_MULT, TEAM_NAMES, WALK_SPEED,
+  EYE_HEIGHT, GRAVITY, JUMP_VEL, MAX_HP, SPRINT_MULT, START_ARMOR, TEAM_NAMES, WALK_SPEED,
   type HitPart, type Phase, type PlayerMeta, type Team,
 } from "../shared/types";
 import { WEAPONS, fireInterval, type WeaponDef } from "../shared/weapons";
@@ -235,9 +235,9 @@ export class Game {
         this.pitch = 0;
         this.alive = true;
         this.hp = MAX_HP;
-        this.armor = 0;
+        this.armor = START_ARMOR;
         hud.trackHp(this.hp);
-        hud.setArmor(0);
+        hud.setArmor(this.armor);
         hud.showSpectate(false);
         this.cur = "primary";
         this.slots = hud.getLoadout();

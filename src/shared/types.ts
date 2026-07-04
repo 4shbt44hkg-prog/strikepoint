@@ -6,6 +6,7 @@ export type HitPart = "head" | "body";
 
 export const MAX_HP = 100;
 export const MAX_ARMOR = 100;
+export const START_ARMOR = 50;  // everyone spawns with this much shield
 export const ARMOR_ABSORB = 0.6;   // fraction of damage the shield eats
 export const HEALTH_PICKUP = 40;
 export const SHIELD_PICKUP = 75;

@@ -8,7 +8,7 @@ import type { C2S, S2C } from "../shared/protocol";
 import {
   ARMOR_ABSORB, EYE_HEIGHT, HEALTH_PICKUP, HEALTH_RESPAWN, LOADOUT_TIME,
   MATCHEND_TIME, MAX_ARMOR, MAX_HP, MAX_PLAYERS, PICKUP_RADIUS, ROUNDEND_TIME,
-  ROUNDS_TO_WIN, ROUND_TIME, SHIELD_PICKUP, SHIELD_RESPAWN, SPRINT_MULT, WALK_SPEED,
+  ROUNDS_TO_WIN, ROUND_TIME, SHIELD_PICKUP, SHIELD_RESPAWN, SPRINT_MULT, START_ARMOR, WALK_SPEED,
   type HitPart, type Phase, type PlayerMeta, type PlayerSnap, type Team,
 } from "../shared/types";
 import { WEAPONS, PRIMARIES, SECONDARIES, damageAt, fireInterval } from "../shared/weapons";
@@ -253,7 +253,7 @@ export class Room {
       p.yaw = (yawDeg * Math.PI) / 180;
       p.pitch = 0;
       p.hp = MAX_HP;
-      p.armor = 0;
+      p.armor = START_ARMOR;
       p.alive = true;
       p.fireBudget = 3;
       p.botCd = 0.5 + Math.random();
@@ -504,6 +504,7 @@ export class Room {
     p.pos = { x, y: 0, z };
     p.yaw = (yawDeg * Math.PI) / 180;
     p.hp = MAX_HP;
+    p.armor = START_ARMOR;
     p.alive = true;
   }
 }

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Strikepoint</title>
+  <link rel="stylesheet" href="/src/client/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div class="scorepill team0"><span id="score0">0</span></div>
+      <div id="roundinfo"><span id="roundlabel">ROUND 1</span><span id="timer">0:00</span></div>
+      <div class="scorepill team1"><span id="score1">0</span></div>
+    </div>
+    <div id="killfeed"></div>
+    <div id="crosshair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><i class="dot"></i></div>
+    <div id="hitmarker"></div>
+    <div id="vignette"></div>
+    <div id="bottomleft">
+      <div id="hpbar"><div id="hpfill"></div></div>
+      <span id="hptext">100</span>
+    </div>
+    <div id="bottomright">
+      <div id="wpnname">Raptor AR</div>
+      <div id="ammo"><span id="magcount">30</span><span class="ammo-inf">/ &infin;</span></div>
+      <div id="wpnhint">1&ndash;2 or Q to swap &middot; R reload &middot; Shift sprint</div>
+    </div>
+    <div id="centerbanner" class="hidden"></div>
+    <div id="spectate" class="hidden">
+      <h2 id="spectitle">ELIMINATED</h2>
+      <p id="specmsg"></p>
+      <p class="spechint">Spectating until next round&hellip;</p>
+    </div>
+    <div id="scoreboard" class="hidden"></div>
+
+    <div id="loadout" class="hidden">
+      <h2>CHOOSE YOUR LOADOUT</h2>
+      <p id="loadouttimer"></p>
+      <div class="loadout-row"><h3>Primary</h3><div id="primarycards"></div></div>
+      <div class="loadout-row"><h3>Secondary</h3><div id="secondarycards"></div></div>
+      <button id="loadoutok">LOCK IN</button>
+    </div>
+
+    <div id="pauseoverlay" class="hidden">
+      <h2>PAUSED</h2>
+      <button id="resumebtn">CLICK TO PLAY</button>
+      <div class="settings">
+        <label><input type="checkbox" id="set-autofire" /> Auto-fire when aiming at an enemy</label>
+        <label>Mouse sensitivity <input type="range" id="set-sens" min="0.2" max="3" step="0.1" /></label>
+        <label>Volume <input type="range" id="set-vol" min="0" max="1" step="0.05" /></label>
+      </div>
+      <p class="pausehint">Room code: <b id="pauseroom"></b> &mdash; friends can join with it</p>
+    </div>
+
+    <div id="touchui" class="hidden">
+      <div id="joystick"><div id="joyknob"></div></div>
+      <div id="touchbtns">
+        <button id="tb-jump">JUMP</button>
+        <button id="tb-sprint">SPRINT</button>
+        <button id="tb-fire">FIRE</button>
+        <button id="tb-reload">R</button>
+        <button id="tb-swap">SWAP</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu">
+    <h1 class="title">STRIKE<span>POINT</span></h1>
+    <p class="subtitle">round-based arena shooter &middot; grab a friend or fight the bots</p>
+
+    <div id="menu-main">
+      <input id="playername" maxlength="16" placeholder="Your name" />
+      <button id="createbtn">CREATE MATCH</button>
+      <div class="joinrow">
+        <input id="roomcode" maxlength="4" placeholder="CODE" />
+        <button id="joinbtn">JOIN</button>
+      </div>
+      <p class="hint">Create a match, then share the 4-letter code with friends. Playing alone? Add bots in the lobby.</p>
+    </div>
+
+    <div id="lobby" class="hidden">
+      <h2>LOBBY &mdash; CODE: <span id="lobbycode"></span></h2>
+      <div id="lobbyteams">
+        <div class="lobbyteam team0"><h3>AZURE</h3><ul id="team0list"></ul></div>
+        <div class="lobbyteam team1"><h3>EMBER</h3><ul id="team1list"></ul></div>
+      </div>
+      <div id="lobbybtns">
+        <button id="addbotbtn">+ ADD BOT</button>
+        <button id="startbtn">START MATCH</button>
+      </div>
+      <p id="lobbyhint" class="hint">First to 5 rounds wins. Eliminate the other team to take a round.</p>
+    </div>
+
+    <p id="menuerror"></p>
+  </div>
+
+  <script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>

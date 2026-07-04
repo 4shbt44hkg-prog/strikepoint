@@ -1,0 +1,10 @@
+# Render blueprint — creates the Strikepoint web service (free tier).
+# One Node process serves the built client and hosts the multiplayer websocket.
+services:
+  - type: web
+    name: strikepoint
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /
